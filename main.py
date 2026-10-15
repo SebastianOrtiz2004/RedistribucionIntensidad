@@ -59,12 +59,28 @@ def obtener_histograma(matriz, filas, columnas):
 
 # ------------------------------------------------------------------------------
 # 3. REDISTRIBUCIÓN DE NIVELES DE INTENSIDAD CON LA BARRA (SCROLLBAR)
+# Lógica explicada por el docente:
+# - Identificar los niveles de intensidad con mayor número de píxeles (picos).
+# - Identificar los niveles que tienen menos píxeles o están vacíos (déficit).
+# - Tomar los píxeles excedentes de los niveles más poblados y redistribuirlos
+#   hacia los niveles con menor cantidad de píxeles según el porcentaje del scrollbar.
+# - No elimina píxeles ni resta valores fijos arbitrarios.
 # ------------------------------------------------------------------------------
 def redistribuir_intensidad(matriz, filas, columnas, porcentaje):
+    # Creamos la nueva matriz con los valores originales
+    nueva_matriz = crear_matriz(filas, columnas)
+    for f in range(filas):
+        for c in range(columnas):
+            nueva_matriz[f][c] = matriz[f][c]
+
+    # Al 0% no se modifica ningún píxel (imagen original)
+    if porcentaje <= 0:
+        return nueva_matriz
+
     factor = porcentaje / 100.0
     total_pixeles = filas * columnas
 
-    # Agrupamos las posiciones (fila, columna) que tienen la misma intensidad
+    # 1. Agrupamos las coordenadas (fila, columna) por cada nivel de intensidad (0 a 255)
     grupos = []
     for nivel in range(256):
         grupos.append([])
@@ -74,34 +90,51 @@ def redistribuir_intensidad(matriz, filas, columnas, porcentaje):
             intensidad = matriz[f][c]
             grupos[intensidad].append((f, c))
 
-    # Nueva matriz uint8 donde se guardan los píxeles redistribuidos
-    nueva_matriz = crear_matriz(filas, columnas)
-    contador = 0
+    # 2. Capacidad ideal equilibrada por nivel (total de píxeles repartido entre los 256 niveles)
+    cuota_base = total_pixeles // 256
+    residuo = total_pixeles % 256
+    cuota = [cuota_base + (1 if i < residuo else 0) for i in range(256)]
 
-    # Recorremos nivel por nivel (de 0 a 255) en orden ascendente.
-    # A cada píxel le asignamos un nuevo nivel basado en su posición en el conteo
-    # acumulado: si hay N píxeles totales y este es el píxel número 'contador',
-    # su nuevo nivel redistribuido será (contador / (N-1)) * 255.
-    # Esto reparte los píxeles de forma UNIFORME en todo el rango 0 a 255,
-    # haciendo que el histograma resultante sea PLANO (todas las barras iguales).
-    for intensidad_actual in range(256):
-        coordenadas = grupos[intensidad_actual]
+    # 3. IDENTIFICAR NIVELES CON MAYOR NÚMERO DE PÍXELES (picos con exceso)
+    # y tomar los píxeles sobrantes en función del porcentaje de la barra
+    pixeles_a_mover = []
+    for nivel in range(256):
+        cantidad_actual = len(grupos[nivel])
+        if cantidad_actual > cuota[nivel]:
+            exceso = cantidad_actual - cuota[nivel]
+            cantidad_mover = int(exceso * factor)
+            # Tomamos esos píxeles del nivel saturado
+            for i in range(cantidad_mover):
+                pixeles_a_mover.append(grupos[nivel][cantidad_actual - 1 - i])
 
-        for posicion in coordenadas:
-            f = posicion[0]
-            c = posicion[1]
+    # 4. IDENTIFICAR NIVELES CON MENOS PÍXELES (déficit / espacio disponible)
+    # y preparar los nuevos niveles a los que se transferirán los píxeles
+    destinos_disponibles = []
+    for nivel in range(256):
+        cantidad_actual = len(grupos[nivel])
+        if cantidad_actual < cuota[nivel]:
+            deficit = cuota[nivel] - cantidad_actual
+            cantidad_recibir = int(deficit * factor)
+            for _ in range(cantidad_recibir):
+                destinos_disponibles.append(nivel)
 
-            # Nivel redistribuido: reparte todos los píxeles uniformemente de 0 a 255
-            nivel_redistribuido = (contador * 255.0) / max(1, total_pixeles - 1)
+    # 5. Ajuste fino de redondeo para que coincida exactamente la cantidad de píxeles a transferir
+    total_a_mover = len(pixeles_a_mover)
+    if len(destinos_disponibles) < total_a_mover:
+        while len(destinos_disponibles) < total_a_mover:
+            for nivel in range(256):
+                if len(grupos[nivel]) < cuota[nivel]:
+                    destinos_disponibles.append(nivel)
+                    if len(destinos_disponibles) == total_a_mover:
+                        break
+    elif len(destinos_disponibles) > total_a_mover:
+        destinos_disponibles = destinos_disponibles[:total_a_mover]
 
-            # Combinación controlada por la barra:
-            # 0% = se queda en la intensidad original (sin cambio)
-            # 100% = se mueve completamente al nivel redistribuido (histograma plano)
-            nuevo_valor = ((1.0 - factor) * intensidad_actual) + (factor * nivel_redistribuido)
-
-            nueva_matriz[f][c] = formato_uint8(nuevo_valor)
-            contador = contador + 1
-
+    # 6. REDISTRIBUIR: a los píxeles tomados de los niveles con mayor concentración
+    # se les asigna su nuevo nivel de intensidad en los niveles con menos píxeles
+    for i in range(total_a_mover):
+        f, c = pixeles_a_mover[i]
+        nueva_matriz[f][c] = destinos_disponibles[i]
 
     return nueva_matriz
 
