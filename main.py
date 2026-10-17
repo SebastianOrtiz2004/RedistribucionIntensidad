@@ -107,32 +107,32 @@ def redistribuir_intensidad(matriz, filas, columnas, porcentaje):
             for i in range(cantidad_mover):
                 pixeles_a_mover.append(grupos[nivel][cantidad_actual - 1 - i])
 
-    # 4. IDENTIFICAR NIVELES CON MENOS PÍXELES (déficit / espacio disponible)
-    # y preparar los nuevos niveles a los que se transferirán los píxeles
+    # 4. IDENTIFICAR ESPACIO DISPONIBLE EN NIVELES DEFICITARIOS
+    # Capacidad exacta que tiene cada nivel para recibir píxeles sin superar su cuota
+    capacidad_disponible = [max(0, cuota[i] - len(grupos[i])) for i in range(256)]
+
+    # 5. ASIGNACIÓN CONTROLADA DE DESTINOS
+    # Repartimos equitativamente los píxeles a mover entre los niveles con déficit,
+    # asegurando que NINGÚN nivel receptor supere jamás su cuota.
     destinos_disponibles = []
-    for nivel in range(256):
-        cantidad_actual = len(grupos[nivel])
-        if cantidad_actual < cuota[nivel]:
-            deficit = cuota[nivel] - cantidad_actual
-            cantidad_recibir = int(deficit * factor)
-            for _ in range(cantidad_recibir):
-                destinos_disponibles.append(nivel)
-
-    # 5. Ajuste fino de redondeo para que coincida exactamente la cantidad de píxeles a transferir
     total_a_mover = len(pixeles_a_mover)
-    if len(destinos_disponibles) < total_a_mover:
-        while len(destinos_disponibles) < total_a_mover:
-            for nivel in range(256):
-                if len(grupos[nivel]) < cuota[nivel]:
-                    destinos_disponibles.append(nivel)
-                    if len(destinos_disponibles) == total_a_mover:
-                        break
-    elif len(destinos_disponibles) > total_a_mover:
-        destinos_disponibles = destinos_disponibles[:total_a_mover]
 
-    # 6. REDISTRIBUIR: a los píxeles tomados de los niveles con mayor concentración
-    # se les asigna su nuevo nivel de intensidad en los niveles con menos píxeles
-    for i in range(total_a_mover):
+    while len(destinos_disponibles) < total_a_mover:
+        progreso = False
+        for nivel in range(256):
+            if capacidad_disponible[nivel] > 0:
+                destinos_disponibles.append(nivel)
+                capacidad_disponible[nivel] -= 1
+                progreso = True
+                if len(destinos_disponibles) == total_a_mover:
+                    break
+        if not progreso:
+            break
+
+    # 6. REDISTRIBUIR: a los píxeles tomados de los picos saturados
+    # se les asigna su nuevo nivel de intensidad en los niveles con déficit
+    total_efectivo = len(destinos_disponibles)
+    for i in range(total_efectivo):
         f, c = pixeles_a_mover[i]
         nueva_matriz[f][c] = destinos_disponibles[i]
 
