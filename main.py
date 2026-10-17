@@ -161,10 +161,10 @@ def pasar_a_imagen(matriz_r, matriz_g, matriz_b, filas, columnas):
 def dibujar_histograma(lienzo, histograma):
     lienzo.delete("all")
 
-    ancho_grafica = 220
-    alto_grafica = 150
-    x_inicio = 38
-    y_base = 175
+    ancho_grafica = 190
+    alto_grafica = 95
+    x_inicio = 35
+    y_base = 120
 
     # Buscamos la barra más alta para ajustar la escala del dibujo
     maximo_conteo = 1
@@ -173,13 +173,13 @@ def dibujar_histograma(lienzo, histograma):
             maximo_conteo = histograma[nivel]
 
     # Recuadro blanco estilo MATLAB
-    lienzo.create_rectangle(x_inicio, 25, x_inicio + ancho_grafica, y_base, outline="white")
-    lienzo.create_text(x_inicio, 12, text=f"Máximo: {maximo_conteo}", fill="white", anchor="w", font=("Arial", 8))
+    lienzo.create_rectangle(x_inicio, 18, x_inicio + ancho_grafica, y_base, outline="white")
+    lienzo.create_text(x_inicio, 9, text=f"Máximo: {maximo_conteo}", fill="white", anchor="w", font=("Arial", 8))
 
-    # Números del eje X (niveles de intensidad de 0 a 250)
+    # Números del eje X (niveles de intensidad)
     for nivel_x in [0, 50, 100, 150, 200, 250]:
         pos_x = x_inicio + (nivel_x / 255.0) * ancho_grafica
-        lienzo.create_text(pos_x, y_base + 12, text=str(nivel_x), fill="white", font=("Arial", 8))
+        lienzo.create_text(pos_x, y_base + 10, text=str(nivel_x), fill="white", font=("Arial", 7))
 
     # Dibujamos las 256 barras del histograma
     for nivel in range(256):
@@ -195,12 +195,9 @@ def dibujar_espectro(lienzo, hist_r, hist_g, hist_b):
     lienzo.delete("all")
 
     ancho_grafica = 220
-    alto_grafica = 140
-    x_inicio = 38
-    y_base = 165
-
-    lienzo.create_text(x_inicio, 12, text="Espectro RGB (400nm - 700nm)", fill="yellow", anchor="w", font=("Arial", 8))
-    lienzo.create_rectangle(x_inicio, 25, x_inicio + ancho_grafica, y_base, outline="white")
+    alto_grafica = 100
+    x_inicio = 35
+    y_base = 122
 
     maximo_total = 1
     for i in range(256):
@@ -210,6 +207,9 @@ def dibujar_espectro(lienzo, hist_r, hist_g, hist_b):
             maximo_total = hist_g[i]
         if hist_b[i] > maximo_total:
             maximo_total = hist_b[i]
+
+    lienzo.create_text(x_inicio, 10, text=f"Espectro RGB (Máx: {maximo_total})", fill="yellow", anchor="w", font=("Arial", 8))
+    lienzo.create_rectangle(x_inicio, 20, x_inicio + ancho_grafica, y_base, outline="white")
 
     # Líneas del espectro para Azul (450nm), Verde (550nm) y Rojo (650nm)
     for nivel in range(255):
@@ -231,9 +231,9 @@ def dibujar_espectro(lienzo, hist_r, hist_g, hist_b):
         yr2 = y_base - (hist_r[nivel + 1] / maximo_total) * alto_grafica
         lienzo.create_line(x1, yr1, x2, yr2, fill="#ff6b6b")
 
-    lienzo.create_text(x_inicio + 15, y_base + 15, text="400nm(B)", fill="#339af0", font=("Arial", 7))
-    lienzo.create_text(x_inicio + 110, y_base + 15, text="550nm(G)", fill="#51cf66", font=("Arial", 7))
-    lienzo.create_text(x_inicio + 200, y_base + 15, text="700nm(R)", fill="#ff6b6b", font=("Arial", 7))
+    lienzo.create_text(x_inicio + 15, y_base + 12, text="400nm(B)", fill="#339af0", font=("Arial", 7))
+    lienzo.create_text(x_inicio + 110, y_base + 12, text="550nm(G)", fill="#51cf66", font=("Arial", 7))
+    lienzo.create_text(x_inicio + 200, y_base + 12, text="700nm(R)", fill="#ff6b6b", font=("Arial", 7))
 
 
 # ------------------------------------------------------------------------------
@@ -298,9 +298,11 @@ def abrir_imagen():
     ancho_original, alto_original = img_pil.size
     pixeles = img_pil.load()
 
-    # Reducimos la escala si la foto es muy grande para que procese rápido al mover las barras
-    salto_x = max(1, ancho_original // 200)
-    salto_y = max(1, alto_original // 150)
+    # Reducimos la escala manteniendo la proporción exacta (aspect ratio)
+    # y tamaño nítido de ~240px x 140px, que ahora entra con total holgura
+    escala = max(1, max(ancho_original // 240, alto_original // 140))
+    salto_x = escala
+    salto_y = escala
 
     filas_r = []
     filas_g = []
@@ -345,7 +347,7 @@ def abrir_imagen():
 ventana = tk.Tk()
 ventana.title("Procesamiento de Imágenes - Histogramas uint8 y Redistribución por Canal")
 ventana.configure(bg="#1e1e1e")
-ventana.geometry("1400x780")
+ventana.geometry("1360x780")
 
 # Parte superior: Botón para subir la imagen y reiniciar barras
 panel_arriba = tk.Frame(ventana, bg="#2d2d2d", pady=8, padx=10)
@@ -375,86 +377,89 @@ tk.Label(
     bg="#2d2d2d", fg="#4ec9b0", font=("Arial", 10, "bold")
 ).pack(side=tk.LEFT, padx=15)
 
-# Parte central: Las 4 columnas
-panel_centro = tk.Frame(ventana, bg="#1e1e1e", pady=8)
+# Parte central con scroll vertical por si se requiere, pero diseñado para entrar directo
+panel_centro = tk.Frame(ventana, bg="#1e1e1e", pady=4, padx=10)
 panel_centro.pack(fill=tk.BOTH, expand=True)
 
-# Columna 1: Canal Rojo (Imagen + Histograma + Barra individual)
-col_rojo = tk.Frame(panel_centro, bg="#1e1e1e", padx=6)
-col_rojo.grid(row=0, column=0, sticky="n")
-tk.Label(col_rojo, text="Canal Rojo", bg="#1e1e1e", fg="#ff6b6b", font=("Arial", 11, "bold")).pack()
-cuadro_img_rojo = tk.Label(col_rojo, bg="black", width=200, height=150)
-cuadro_img_rojo.pack(pady=4)
-grafica_rojo = tk.Canvas(col_rojo, width=270, height=180, bg="#141414")
-grafica_rojo.pack(pady=4)
+# ----------------- FILA SUPERIOR: CANALES R, G, B -----------------
+fila_canales = tk.Frame(panel_centro, bg="#1e1e1e")
+fila_canales.pack(fill=tk.X, pady=2)
+
+# Columna 1: Canal Rojo
+col_rojo = tk.Frame(fila_canales, bg="#1e1e1e", padx=10)
+col_rojo.pack(side=tk.LEFT, expand=True)
+tk.Label(col_rojo, text="Canal Rojo", bg="#1e1e1e", fg="#ff6b6b", font=("Arial", 10, "bold")).pack()
+cuadro_img_rojo = tk.Label(col_rojo, bg="black")
+cuadro_img_rojo.pack(pady=2)
+grafica_rojo = tk.Canvas(col_rojo, width=240, height=140, bg="#141414")
+grafica_rojo.pack(pady=2)
 barra_rojo = tk.Scale(
     col_rojo, from_=0, to=100, orient=tk.HORIZONTAL,
     bg="#252525", fg="#ff6b6b", highlightthickness=0,
     label="Redistribución Rojo (%):", font=("Arial", 8, "bold"),
     command=al_mover_barras
 )
-barra_rojo.pack(fill=tk.X, pady=4)
+barra_rojo.pack(fill=tk.X, pady=2)
 
-# Columna 2: Canal Verde (Imagen + Histograma + Barra individual)
-col_verde = tk.Frame(panel_centro, bg="#1e1e1e", padx=6)
-col_verde.grid(row=0, column=1, sticky="n")
-tk.Label(col_verde, text="Canal Verde", bg="#1e1e1e", fg="#51cf66", font=("Arial", 11, "bold")).pack()
-cuadro_img_verde = tk.Label(col_verde, bg="black", width=200, height=150)
-cuadro_img_verde.pack(pady=4)
-grafica_verde = tk.Canvas(col_verde, width=270, height=180, bg="#141414")
-grafica_verde.pack(pady=4)
+# Columna 2: Canal Verde
+col_verde = tk.Frame(fila_canales, bg="#1e1e1e", padx=10)
+col_verde.pack(side=tk.LEFT, expand=True)
+tk.Label(col_verde, text="Canal Verde", bg="#1e1e1e", fg="#51cf66", font=("Arial", 10, "bold")).pack()
+cuadro_img_verde = tk.Label(col_verde, bg="black")
+cuadro_img_verde.pack(pady=2)
+grafica_verde = tk.Canvas(col_verde, width=240, height=140, bg="#141414")
+grafica_verde.pack(pady=2)
 barra_verde = tk.Scale(
     col_verde, from_=0, to=100, orient=tk.HORIZONTAL,
     bg="#252525", fg="#51cf66", highlightthickness=0,
     label="Redistribución Verde (%):", font=("Arial", 8, "bold"),
     command=al_mover_barras
 )
-barra_verde.pack(fill=tk.X, pady=4)
+barra_verde.pack(fill=tk.X, pady=2)
 
-# Columna 3: Canal Azul (Imagen + Histograma + Barra individual)
-col_azul = tk.Frame(panel_centro, bg="#1e1e1e", padx=6)
-col_azul.grid(row=0, column=2, sticky="n")
-tk.Label(col_azul, text="Canal Azul", bg="#1e1e1e", fg="#339af0", font=("Arial", 11, "bold")).pack()
-cuadro_img_azul = tk.Label(col_azul, bg="black", width=200, height=150)
-cuadro_img_azul.pack(pady=4)
-grafica_azul = tk.Canvas(col_azul, width=270, height=180, bg="#141414")
-grafica_azul.pack(pady=4)
+# Columna 3: Canal Azul
+col_azul = tk.Frame(fila_canales, bg="#1e1e1e", padx=10)
+col_azul.pack(side=tk.LEFT, expand=True)
+tk.Label(col_azul, text="Canal Azul", bg="#1e1e1e", fg="#339af0", font=("Arial", 10, "bold")).pack()
+cuadro_img_azul = tk.Label(col_azul, bg="black")
+cuadro_img_azul.pack(pady=2)
+grafica_azul = tk.Canvas(col_azul, width=240, height=140, bg="#141414")
+grafica_azul.pack(pady=2)
 barra_azul = tk.Scale(
     col_azul, from_=0, to=100, orient=tk.HORIZONTAL,
     bg="#252525", fg="#339af0", highlightthickness=0,
     label="Redistribución Azul (%):", font=("Arial", 8, "bold"),
     command=al_mover_barras
 )
-barra_azul.pack(fill=tk.X, pady=4)
+barra_azul.pack(fill=tk.X, pady=2)
 
-# Columna 4: Comparativa de Imagen (Original vs Resultante) + Espectro
-col_color = tk.Frame(panel_centro, bg="#1e1e1e", padx=6)
-col_color.grid(row=0, column=3, sticky="n")
-tk.Label(col_color, text="Comparativa RGB y Espectro", bg="#1e1e1e", fg="#ffd43b", font=("Arial", 11, "bold")).pack()
+# ----------------- FILA INFERIOR: COMPARATIVA Y ESPECTRO -----------------
+fila_inferior = tk.Frame(panel_centro, bg="#252525", pady=6, padx=10)
+fila_inferior.pack(fill=tk.X, pady=6)
 
-# Panel horizontal para mostrar Imagen Original y Resultante lado a lado
-panel_comparativa = tk.Frame(col_color, bg="#1e1e1e")
-panel_comparativa.pack(pady=4)
+# Sección Original
+sub_original = tk.Frame(fila_inferior, bg="#252525", padx=15)
+sub_original.pack(side=tk.LEFT, expand=True)
+tk.Label(sub_original, text="Imagen Original", bg="#252525", fg="#ffd43b", font=("Arial", 10, "bold")).pack()
+cuadro_img_original = tk.Label(sub_original, bg="black")
+cuadro_img_original.pack(pady=2)
 
-sub_original = tk.Frame(panel_comparativa, bg="#1e1e1e", padx=4)
-sub_original.pack(side=tk.LEFT)
-tk.Label(sub_original, text="Original", bg="#1e1e1e", fg="#aaaaaa", font=("Arial", 9, "bold")).pack()
-cuadro_img_original = tk.Label(sub_original, bg="black", width=140, height=140)
-cuadro_img_original.pack()
+# Sección Resultante
+sub_resultante = tk.Frame(fila_inferior, bg="#252525", padx=15)
+sub_resultante.pack(side=tk.LEFT, expand=True)
+tk.Label(sub_resultante, text="Imagen Resultante (Redistribuida)", bg="#252525", fg="#00d2ff", font=("Arial", 10, "bold")).pack()
+cuadro_img_resultante = tk.Label(sub_resultante, bg="black")
+cuadro_img_resultante.pack(pady=2)
 
-sub_resultante = tk.Frame(panel_comparativa, bg="#1e1e1e", padx=4)
-sub_resultante.pack(side=tk.LEFT)
-tk.Label(sub_resultante, text="Resultante", bg="#1e1e1e", fg="#00d2ff", font=("Arial", 9, "bold")).pack()
-cuadro_img_resultante = tk.Label(sub_resultante, bg="black", width=140, height=140)
-cuadro_img_resultante.pack()
+# Sección Espectro
+sub_espectro = tk.Frame(fila_inferior, bg="#252525", padx=15)
+sub_espectro.pack(side=tk.LEFT, expand=True)
+grafica_espectro = tk.Canvas(sub_espectro, width=280, height=150, bg="#141414")
+grafica_espectro.pack(pady=2)
 
-# Gráfica del Espectro
-grafica_espectro = tk.Canvas(col_color, width=280, height=180, bg="#141414")
-grafica_espectro.pack(pady=4)
-
-tk.Label(
-    col_color, text="Comparación en tiempo real:\nOriginal (izquierda) vs Redistribuida (derecha)",
-    bg="#1e1e1e", fg="#cccccc", font=("Arial", 8), justify=tk.CENTER
-).pack(pady=2)
+try:
+    ventana.state("zoomed")
+except Exception:
+    pass
 
 ventana.mainloop()
