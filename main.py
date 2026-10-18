@@ -59,85 +59,81 @@ def obtener_histograma(matriz, filas, columnas):
 
 # ------------------------------------------------------------------------------
 # 3. REDISTRIBUCIÓN DE NIVELES DE INTENSIDAD CON LA BARRA (SCROLLBAR)
-# Lógica explicada por el docente:
-# - Identificar los niveles de intensidad con mayor número de píxeles (picos).
-# - Identificar los niveles que tienen menos píxeles o están vacíos (déficit).
-# - Tomar los píxeles excedentes de los niveles más poblados y redistribuirlos
-#   hacia los niveles con menor cantidad de píxeles según el porcentaje del scrollbar.
-# - No elimina píxeles ni resta valores fijos arbitrarios.
+# - Corta los picos según el porcentaje del scrollbar y reparte el exceso en los valles.
+# - Asigna los nuevos valores en orden de brillo para que el histograma se aplane
+#   sin romper la vecindad de píxeles (cero ruido de sal y pimienta).
 # ------------------------------------------------------------------------------
 def redistribuir_intensidad(matriz, filas, columnas, porcentaje):
-    # Creamos la nueva matriz con los valores originales
-    nueva_matriz = crear_matriz(filas, columnas)
-    for f in range(filas):
-        for c in range(columnas):
-            nueva_matriz[f][c] = matriz[f][c]
-
-    # Al 0% no se modifica ningún píxel (imagen original)
+    # Al 0% no se modifica ningún píxel (imagen original intacta)
     if porcentaje <= 0:
+        nueva_matriz = crear_matriz(filas, columnas)
+        for f in range(filas):
+            for c in range(columnas):
+                nueva_matriz[f][c] = matriz[f][c]
         return nueva_matriz
 
     factor = porcentaje / 100.0
     total_pixeles = filas * columnas
 
-    # 1. Agrupamos las coordenadas (fila, columna) por cada nivel de intensidad (0 a 255)
-    grupos = []
-    for nivel in range(256):
-        grupos.append([])
-
+    # 1. Agrupamos las coordenadas (f, c) de cada píxel según su nivel original (0 a 255)
+    grupos = [[] for _ in range(256)]
     for f in range(filas):
         for c in range(columnas):
-            intensidad = matriz[f][c]
-            grupos[intensidad].append((f, c))
+            grupos[matriz[f][c]].append((f, c))
 
-    # 2. Capacidad ideal equilibrada por nivel (total de píxeles repartido entre los 256 niveles)
-    cuota_base = total_pixeles // 256
-    residuo = total_pixeles % 256
-    cuota = [cuota_base + (1 if i < residuo else 0) for i in range(256)]
+    # 2. Histograma original y cuota plana ideal
+    hist_original = [len(grupos[i]) for i in range(256)]
+    maximo_pico = max(hist_original)
+    cuota_ideal = total_pixeles / 256.0
 
-    # 3. IDENTIFICAR NIVELES CON MAYOR NÚMERO DE PÍXELES (picos con exceso)
-    # y tomar los píxeles sobrantes en función del porcentaje de la barra
-    pixeles_a_mover = []
-    for nivel in range(256):
-        cantidad_actual = len(grupos[nivel])
-        if cantidad_actual > cuota[nivel]:
-            exceso = cantidad_actual - cuota[nivel]
-            cantidad_mover = int(exceso * factor)
-            # Tomamos esos píxeles del nivel saturado
-            for i in range(cantidad_mover):
-                pixeles_a_mover.append(grupos[nivel][cantidad_actual - 1 - i])
+    # 3. Techo de corte: baja progresivamente a medida que subes el scrollbar
+    techo = maximo_pico - factor * (maximo_pico - cuota_ideal)
 
-    # 4. IDENTIFICAR ESPACIO DISPONIBLE EN NIVELES DEFICITARIOS
-    # Capacidad exacta que tiene cada nivel para recibir píxeles sin superar su cuota
-    capacidad_disponible = [max(0, cuota[i] - len(grupos[i])) for i in range(256)]
+    # 4. Recorte de picos y cálculo del exceso
+    hist_objetivo = [0.0] * 256
+    exceso_total = 0.0
 
-    # 5. ASIGNACIÓN CONTROLADA DE DESTINOS
-    # Repartimos equitativamente los píxeles a mover entre los niveles con déficit,
-    # asegurando que NINGÚN nivel receptor supere jamás su cuota.
-    destinos_disponibles = []
-    total_a_mover = len(pixeles_a_mover)
+    for i in range(256):
+        if hist_original[i] > techo:
+            exceso_total += (hist_original[i] - techo)
+            hist_objetivo[i] = techo
+        else:
+            hist_objetivo[i] = float(hist_original[i])
 
-    while len(destinos_disponibles) < total_a_mover:
-        progreso = False
-        for nivel in range(256):
-            if capacidad_disponible[nivel] > 0:
-                destinos_disponibles.append(nivel)
-                capacidad_disponible[nivel] -= 1
-                progreso = True
-                if len(destinos_disponibles) == total_a_mover:
-                    break
-        if not progreso:
-            break
+    # 5. El exceso se redistribuye en los niveles con déficit (valles vacíos)
+    niveles_deficit = [i for i in range(256) if hist_objetivo[i] < techo]
+    if niveles_deficit and exceso_total > 0:
+        reparto = exceso_total / len(niveles_deficit)
+        for i in niveles_deficit:
+            hist_objetivo[i] += reparto
+    else:
+        reparto = exceso_total / 256.0
+        for i in range(256):
+            hist_objetivo[i] += reparto
 
-    # 6. REDISTRIBUIR: a los píxeles tomados de los picos saturados
-    # se les asigna su nuevo nivel de intensidad en los niveles con déficit
-    total_efectivo = len(destinos_disponibles)
-    for i in range(total_efectivo):
-        f, c = pixeles_a_mover[i]
-        nueva_matriz[f][c] = destinos_disponibles[i]
+    # 6. Cuotas enteras garantizando que la suma sea exactamente total_pixeles
+    cuotas_enteras = [int(hist_objetivo[i]) for i in range(256)]
+    faltante = total_pixeles - sum(cuotas_enteras)
+    for i in range(faltante):
+        cuotas_enteras[i % 256] += 1
+
+    # 7. Asignación ordenada: aplana las barras del histograma y mantiene la imagen suave
+    nueva_matriz = crear_matriz(filas, columnas)
+    nivel_destino = 0
+    puesto_en_nivel = 0
+
+    for nivel_orig in range(256):
+        for f, c in grupos[nivel_orig]:
+            while nivel_destino < 255 and puesto_en_nivel >= cuotas_enteras[nivel_destino]:
+                nivel_destino += 1
+                puesto_en_nivel = 0
+
+            # Transición suave entre el nivel original y el destino aplanado
+            valor_final = (1.0 - factor) * nivel_orig + factor * nivel_destino
+            nueva_matriz[f][c] = formato_uint8(valor_final)
+            puesto_en_nivel += 1
 
     return nueva_matriz
-
 
 # ------------------------------------------------------------------------------
 # 4. FUNCIONES PARA MOSTRAR LAS IMÁGENES Y GRÁFICAS EN LA VENTANA
@@ -299,8 +295,8 @@ def abrir_imagen():
     pixeles = img_pil.load()
 
     # Reducimos la escala manteniendo la proporción exacta (aspect ratio)
-    # y tamaño nítido de ~240px x 140px, que ahora entra con total holgura
-    escala = max(1, max(ancho_original // 240, alto_original // 140))
+    # y aumentando la resolución a ~300px x 165px para máxima nitidez y definición
+    escala = max(1, max(ancho_original // 300, alto_original // 165))
     salto_x = escala
     salto_y = escala
 
@@ -312,12 +308,31 @@ def abrir_imagen():
         fila_r = bytearray()
         fila_g = bytearray()
         fila_b = bytearray()
-        for c in range(0, ancho_original, salto_x):
-            r, g, b = pixeles[c, f][:3]
 
-            fila_r.append(formato_uint8(r))
-            fila_g.append(formato_uint8(g))
-            fila_b.append(formato_uint8(b))
+        # Límites del bloque vertical
+        f_fin = min(f + salto_y, alto_original)
+
+        for c in range(0, ancho_original, salto_x):
+            # Límites del bloque horizontal
+            c_fin = min(c + salto_x, ancho_original)
+
+            # Promediamos los píxeles vecinos del bloque (Box Averaging)
+            # para eliminar los dientes de sierra y el pixelado sin librerías complejas
+            suma_r = 0
+            suma_g = 0
+            suma_b = 0
+            total_vecinos = (f_fin - f) * (c_fin - c)
+
+            for bf in range(f, f_fin):
+                for bc in range(c, c_fin):
+                    pr, pg, pb = pixeles[bc, bf][:3]
+                    suma_r += pr
+                    suma_g += pg
+                    suma_b += pb
+
+            fila_r.append(formato_uint8(suma_r / total_vecinos))
+            fila_g.append(formato_uint8(suma_g / total_vecinos))
+            fila_b.append(formato_uint8(suma_b / total_vecinos))
 
         filas_r.append(fila_r)
         filas_g.append(fila_g)
@@ -377,85 +392,85 @@ tk.Label(
     bg="#2d2d2d", fg="#4ec9b0", font=("Arial", 10, "bold")
 ).pack(side=tk.LEFT, padx=15)
 
-# Parte central con scroll vertical por si se requiere, pero diseñado para entrar directo
-panel_centro = tk.Frame(ventana, bg="#1e1e1e", pady=4, padx=10)
+# Parte central optimizada para pantallas estándar
+panel_centro = tk.Frame(ventana, bg="#1e1e1e", pady=2, padx=10)
 panel_centro.pack(fill=tk.BOTH, expand=True)
 
 # ----------------- FILA SUPERIOR: CANALES R, G, B -----------------
 fila_canales = tk.Frame(panel_centro, bg="#1e1e1e")
-fila_canales.pack(fill=tk.X, pady=2)
+fila_canales.pack(fill=tk.X, pady=1)
 
 # Columna 1: Canal Rojo
-col_rojo = tk.Frame(fila_canales, bg="#1e1e1e", padx=10)
+col_rojo = tk.Frame(fila_canales, bg="#1e1e1e", padx=8)
 col_rojo.pack(side=tk.LEFT, expand=True)
-tk.Label(col_rojo, text="Canal Rojo", bg="#1e1e1e", fg="#ff6b6b", font=("Arial", 10, "bold")).pack()
+tk.Label(col_rojo, text="Canal Rojo", bg="#1e1e1e", fg="#ff6b6b", font=("Arial", 9, "bold")).pack()
 cuadro_img_rojo = tk.Label(col_rojo, bg="black")
-cuadro_img_rojo.pack(pady=2)
-grafica_rojo = tk.Canvas(col_rojo, width=240, height=140, bg="#141414")
-grafica_rojo.pack(pady=2)
+cuadro_img_rojo.pack(pady=1)
+grafica_rojo = tk.Canvas(col_rojo, width=240, height=130, bg="#141414")
+grafica_rojo.pack(pady=1)
 barra_rojo = tk.Scale(
     col_rojo, from_=0, to=100, orient=tk.HORIZONTAL,
     bg="#252525", fg="#ff6b6b", highlightthickness=0,
     label="Redistribución Rojo (%):", font=("Arial", 8, "bold"),
     command=al_mover_barras
 )
-barra_rojo.pack(fill=tk.X, pady=2)
+barra_rojo.pack(fill=tk.X, pady=1)
 
 # Columna 2: Canal Verde
-col_verde = tk.Frame(fila_canales, bg="#1e1e1e", padx=10)
+col_verde = tk.Frame(fila_canales, bg="#1e1e1e", padx=8)
 col_verde.pack(side=tk.LEFT, expand=True)
-tk.Label(col_verde, text="Canal Verde", bg="#1e1e1e", fg="#51cf66", font=("Arial", 10, "bold")).pack()
+tk.Label(col_verde, text="Canal Verde", bg="#1e1e1e", fg="#51cf66", font=("Arial", 9, "bold")).pack()
 cuadro_img_verde = tk.Label(col_verde, bg="black")
-cuadro_img_verde.pack(pady=2)
-grafica_verde = tk.Canvas(col_verde, width=240, height=140, bg="#141414")
-grafica_verde.pack(pady=2)
+cuadro_img_verde.pack(pady=1)
+grafica_verde = tk.Canvas(col_verde, width=240, height=130, bg="#141414")
+grafica_verde.pack(pady=1)
 barra_verde = tk.Scale(
     col_verde, from_=0, to=100, orient=tk.HORIZONTAL,
     bg="#252525", fg="#51cf66", highlightthickness=0,
     label="Redistribución Verde (%):", font=("Arial", 8, "bold"),
     command=al_mover_barras
 )
-barra_verde.pack(fill=tk.X, pady=2)
+barra_verde.pack(fill=tk.X, pady=1)
 
 # Columna 3: Canal Azul
-col_azul = tk.Frame(fila_canales, bg="#1e1e1e", padx=10)
+col_azul = tk.Frame(fila_canales, bg="#1e1e1e", padx=8)
 col_azul.pack(side=tk.LEFT, expand=True)
-tk.Label(col_azul, text="Canal Azul", bg="#1e1e1e", fg="#339af0", font=("Arial", 10, "bold")).pack()
+tk.Label(col_azul, text="Canal Azul", bg="#1e1e1e", fg="#339af0", font=("Arial", 9, "bold")).pack()
 cuadro_img_azul = tk.Label(col_azul, bg="black")
-cuadro_img_azul.pack(pady=2)
-grafica_azul = tk.Canvas(col_azul, width=240, height=140, bg="#141414")
-grafica_azul.pack(pady=2)
+cuadro_img_azul.pack(pady=1)
+grafica_azul = tk.Canvas(col_azul, width=240, height=130, bg="#141414")
+grafica_azul.pack(pady=1)
 barra_azul = tk.Scale(
     col_azul, from_=0, to=100, orient=tk.HORIZONTAL,
     bg="#252525", fg="#339af0", highlightthickness=0,
     label="Redistribución Azul (%):", font=("Arial", 8, "bold"),
     command=al_mover_barras
 )
-barra_azul.pack(fill=tk.X, pady=2)
+barra_azul.pack(fill=tk.X, pady=1)
 
 # ----------------- FILA INFERIOR: COMPARATIVA Y ESPECTRO -----------------
-fila_inferior = tk.Frame(panel_centro, bg="#252525", pady=6, padx=10)
-fila_inferior.pack(fill=tk.X, pady=6)
+fila_inferior = tk.Frame(panel_centro, bg="#252525", pady=3, padx=8)
+fila_inferior.pack(fill=tk.X, pady=3)
 
 # Sección Original
-sub_original = tk.Frame(fila_inferior, bg="#252525", padx=15)
+sub_original = tk.Frame(fila_inferior, bg="#252525", padx=10)
 sub_original.pack(side=tk.LEFT, expand=True)
-tk.Label(sub_original, text="Imagen Original", bg="#252525", fg="#ffd43b", font=("Arial", 10, "bold")).pack()
+tk.Label(sub_original, text="Imagen Original", bg="#252525", fg="#ffd43b", font=("Arial", 9, "bold")).pack()
 cuadro_img_original = tk.Label(sub_original, bg="black")
-cuadro_img_original.pack(pady=2)
+cuadro_img_original.pack(pady=1)
 
 # Sección Resultante
-sub_resultante = tk.Frame(fila_inferior, bg="#252525", padx=15)
+sub_resultante = tk.Frame(fila_inferior, bg="#252525", padx=10)
 sub_resultante.pack(side=tk.LEFT, expand=True)
-tk.Label(sub_resultante, text="Imagen Resultante (Redistribuida)", bg="#252525", fg="#00d2ff", font=("Arial", 10, "bold")).pack()
+tk.Label(sub_resultante, text="Imagen Resultante (Redistribuida)", bg="#252525", fg="#00d2ff", font=("Arial", 9, "bold")).pack()
 cuadro_img_resultante = tk.Label(sub_resultante, bg="black")
-cuadro_img_resultante.pack(pady=2)
+cuadro_img_resultante.pack(pady=1)
 
 # Sección Espectro
-sub_espectro = tk.Frame(fila_inferior, bg="#252525", padx=15)
+sub_espectro = tk.Frame(fila_inferior, bg="#252525", padx=10)
 sub_espectro.pack(side=tk.LEFT, expand=True)
-grafica_espectro = tk.Canvas(sub_espectro, width=280, height=150, bg="#141414")
-grafica_espectro.pack(pady=2)
+grafica_espectro = tk.Canvas(sub_espectro, width=260, height=135, bg="#141414")
+grafica_espectro.pack(pady=1)
 
 try:
     ventana.state("zoomed")
