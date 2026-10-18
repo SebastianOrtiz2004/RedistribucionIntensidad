@@ -170,13 +170,13 @@ def pasar_a_imagen(matriz_r, matriz_g, matriz_b, filas, columnas):
     return imagen
 
 
-def dibujar_histograma(lienzo, histograma):
+def dibujar_histograma(lienzo, histograma, color="#339af0"):
     lienzo.delete("all")
 
-    ancho_grafica = 190
-    alto_grafica = 95
-    x_inicio = 35
-    y_base = 120
+    ancho_grafica = 256
+    alto_grafica = 105
+    x_inicio = 22
+    y_base = 125
 
     # Buscamos la barra más alta para ajustar la escala del dibujo
     maximo_conteo = 1
@@ -184,32 +184,48 @@ def dibujar_histograma(lienzo, histograma):
         if histograma[nivel] > maximo_conteo:
             maximo_conteo = histograma[nivel]
 
-    # Recuadro blanco estilo MATLAB
-    lienzo.create_rectangle(x_inicio, 18, x_inicio + ancho_grafica, y_base, outline="white")
-    lienzo.create_text(x_inicio, 9, text=f"Máximo: {maximo_conteo}", fill="white", anchor="w", font=("Arial", 8))
+    # Fondo oscuro interno para el área de la gráfica
+    lienzo.create_rectangle(x_inicio, 20, x_inicio + ancho_grafica, y_base, fill="#121212", outline="")
 
-    # Números del eje X (niveles de intensidad)
-    for nivel_x in [0, 50, 100, 150, 200, 250]:
-        pos_x = x_inicio + (nivel_x / 255.0) * ancho_grafica
-        lienzo.create_text(pos_x, y_base + 10, text=str(nivel_x), fill="white", font=("Arial", 7))
+    # Líneas de cuadrícula sutiles horizontales (25%, 50%, 75%)
+    for f_y in (0.25, 0.50, 0.75):
+        pos_y_grid = y_base - f_y * alto_grafica
+        lienzo.create_line(x_inicio + 1, pos_y_grid, x_inicio + ancho_grafica - 1, pos_y_grid, fill="#232323")
 
-    # Dibujamos las 256 barras del histograma
+    # Líneas de cuadrícula sutiles verticales (50, 100, 150, 200)
+    for nivel_grid in (50, 100, 150, 200):
+        pos_x_grid = x_inicio + nivel_grid
+        lienzo.create_line(pos_x_grid, 21, pos_x_grid, y_base - 1, fill="#232323")
+
+    # Dibujamos las 256 barras del histograma (1 píxel exacto por cada nivel uint8)
     for nivel in range(256):
         cantidad = histograma[nivel]
         if cantidad > 0:
-            pos_x = x_inicio + (nivel / 255.0) * ancho_grafica
+            pos_x = x_inicio + nivel
             altura = (cantidad / maximo_conteo) * alto_grafica
             pos_y = y_base - altura
-            lienzo.create_line(pos_x, y_base, pos_x, pos_y, fill="#2b7bba", width=2)
+            lienzo.create_line(pos_x, y_base, pos_x, pos_y, fill=color, width=1)
+
+    # Recuadro perimetral nítido sobre las barras
+    lienzo.create_rectangle(x_inicio, 20, x_inicio + ancho_grafica, y_base, outline="#555555")
+
+    # Etiqueta superior con el valor pico
+    lienzo.create_text(x_inicio, 10, text=f"Máximo: {maximo_conteo}", fill="#d0d0d0", anchor="w", font=("Arial", 8, "bold"))
+
+    # Números y marcas (ticks) del eje X
+    for nivel_x in [0, 50, 100, 150, 200, 255]:
+        pos_x = x_inicio + nivel_x
+        lienzo.create_line(pos_x, y_base, pos_x, y_base + 3, fill="#666666")
+        lienzo.create_text(pos_x, y_base + 11, text=str(nivel_x), fill="#aaaaaa", font=("Arial", 8))
 
 
 def dibujar_espectro(lienzo, hist_r, hist_g, hist_b):
     lienzo.delete("all")
 
-    ancho_grafica = 220
-    alto_grafica = 100
-    x_inicio = 35
-    y_base = 122
+    ancho_grafica = 256
+    alto_grafica = 105
+    x_inicio = 22
+    y_base = 125
 
     maximo_total = 1
     for i in range(256):
@@ -220,10 +236,19 @@ def dibujar_espectro(lienzo, hist_r, hist_g, hist_b):
         if hist_b[i] > maximo_total:
             maximo_total = hist_b[i]
 
-    lienzo.create_text(x_inicio, 10, text=f"Espectro RGB (Máx: {maximo_total})", fill="yellow", anchor="w", font=("Arial", 8))
-    lienzo.create_rectangle(x_inicio, 20, x_inicio + ancho_grafica, y_base, outline="white")
+    # Fondo oscuro interno
+    lienzo.create_rectangle(x_inicio, 20, x_inicio + ancho_grafica, y_base, fill="#121212", outline="")
 
-    # Líneas del espectro para Azul (450nm), Verde (550nm) y Rojo (650nm)
+    # Líneas de cuadrícula sutiles
+    for f_y in (0.25, 0.50, 0.75):
+        pos_y_grid = y_base - f_y * alto_grafica
+        lienzo.create_line(x_inicio + 1, pos_y_grid, x_inicio + ancho_grafica - 1, pos_y_grid, fill="#232323")
+
+    for nivel_grid in (50, 100, 150, 200):
+        pos_x_grid = x_inicio + nivel_grid
+        lienzo.create_line(pos_x_grid, 21, pos_x_grid, y_base - 1, fill="#232323")
+
+    # Curvas continuas del espectro (Azul, Verde y Rojo) con grosor de 2px para mayor nitidez
     for nivel in range(255):
         x1 = x_inicio + (nivel / 255.0) * ancho_grafica
         x2 = x_inicio + ((nivel + 1) / 255.0) * ancho_grafica
@@ -231,21 +256,33 @@ def dibujar_espectro(lienzo, hist_r, hist_g, hist_b):
         # Azul
         yb1 = y_base - (hist_b[nivel] / maximo_total) * alto_grafica
         yb2 = y_base - (hist_b[nivel + 1] / maximo_total) * alto_grafica
-        lienzo.create_line(x1, yb1, x2, yb2, fill="#339af0")
+        lienzo.create_line(x1, yb1, x2, yb2, fill="#339af0", width=2)
 
         # Verde
         yg1 = y_base - (hist_g[nivel] / maximo_total) * alto_grafica
         yg2 = y_base - (hist_g[nivel + 1] / maximo_total) * alto_grafica
-        lienzo.create_line(x1, yg1, x2, yg2, fill="#51cf66")
+        lienzo.create_line(x1, yg1, x2, yg2, fill="#51cf66", width=2)
 
         # Rojo
         yr1 = y_base - (hist_r[nivel] / maximo_total) * alto_grafica
         yr2 = y_base - (hist_r[nivel + 1] / maximo_total) * alto_grafica
-        lienzo.create_line(x1, yr1, x2, yr2, fill="#ff6b6b")
+        lienzo.create_line(x1, yr1, x2, yr2, fill="#ff6b6b", width=2)
 
-    lienzo.create_text(x_inicio + 15, y_base + 12, text="400nm(B)", fill="#339af0", font=("Arial", 7))
-    lienzo.create_text(x_inicio + 110, y_base + 12, text="550nm(G)", fill="#51cf66", font=("Arial", 7))
-    lienzo.create_text(x_inicio + 200, y_base + 12, text="700nm(R)", fill="#ff6b6b", font=("Arial", 7))
+    # Recuadro perimetral
+    lienzo.create_rectangle(x_inicio, 20, x_inicio + ancho_grafica, y_base, outline="#555555")
+
+    # Título superior
+    lienzo.create_text(x_inicio, 10, text=f"Espectro RGB (Máx: {maximo_total})", fill="#ffd43b", anchor="w", font=("Arial", 8, "bold"))
+
+    # Etiquetas de longitud de onda con ticks
+    lienzo.create_line(x_inicio + 25, y_base, x_inicio + 25, y_base + 3, fill="#666666")
+    lienzo.create_text(x_inicio + 25, y_base + 11, text="400nm(B)", fill="#339af0", font=("Arial", 8))
+
+    lienzo.create_line(x_inicio + 128, y_base, x_inicio + 128, y_base + 3, fill="#666666")
+    lienzo.create_text(x_inicio + 128, y_base + 11, text="550nm(G)", fill="#51cf66", font=("Arial", 8))
+
+    lienzo.create_line(x_inicio + 230, y_base, x_inicio + 230, y_base + 3, fill="#666666")
+    lienzo.create_text(x_inicio + 230, y_base + 11, text="700nm(R)", fill="#ff6b6b", font=("Arial", 8))
 
 
 # ------------------------------------------------------------------------------
@@ -283,10 +320,10 @@ def al_mover_barras(_=None):
     hist_g = obtener_histograma(verde_nuevo, alto, ancho)
     hist_b = obtener_histograma(azul_nuevo, alto, ancho)
 
-    # 4. Dibujamos los 3 histogramas y el espectro de luz
-    dibujar_histograma(grafica_rojo, hist_r)
-    dibujar_histograma(grafica_verde, hist_g)
-    dibujar_histograma(grafica_azul, hist_b)
+    # 4. Dibujamos los 3 histogramas temáticos y el espectro de luz
+    dibujar_histograma(grafica_rojo, hist_r, color="#ff6b6b")
+    dibujar_histograma(grafica_verde, hist_g, color="#51cf66")
+    dibujar_histograma(grafica_azul, hist_b, color="#339af0")
     dibujar_espectro(grafica_espectro, hist_r, hist_g, hist_b)
 
 
@@ -422,7 +459,7 @@ col_rojo.pack(side=tk.LEFT, expand=True)
 tk.Label(col_rojo, text="Canal Rojo", bg="#1e1e1e", fg="#ff6b6b", font=("Arial", 9, "bold")).pack()
 cuadro_img_rojo = tk.Label(col_rojo, bg="black")
 cuadro_img_rojo.pack(pady=1)
-grafica_rojo = tk.Canvas(col_rojo, width=240, height=130, bg="#141414")
+grafica_rojo = tk.Canvas(col_rojo, width=300, height=145, bg="#141414")
 grafica_rojo.pack(pady=1)
 barra_rojo = tk.Scale(
     col_rojo, from_=0, to=100, orient=tk.HORIZONTAL,
@@ -438,7 +475,7 @@ col_verde.pack(side=tk.LEFT, expand=True)
 tk.Label(col_verde, text="Canal Verde", bg="#1e1e1e", fg="#51cf66", font=("Arial", 9, "bold")).pack()
 cuadro_img_verde = tk.Label(col_verde, bg="black")
 cuadro_img_verde.pack(pady=1)
-grafica_verde = tk.Canvas(col_verde, width=240, height=130, bg="#141414")
+grafica_verde = tk.Canvas(col_verde, width=300, height=145, bg="#141414")
 grafica_verde.pack(pady=1)
 barra_verde = tk.Scale(
     col_verde, from_=0, to=100, orient=tk.HORIZONTAL,
@@ -454,7 +491,7 @@ col_azul.pack(side=tk.LEFT, expand=True)
 tk.Label(col_azul, text="Canal Azul", bg="#1e1e1e", fg="#339af0", font=("Arial", 9, "bold")).pack()
 cuadro_img_azul = tk.Label(col_azul, bg="black")
 cuadro_img_azul.pack(pady=1)
-grafica_azul = tk.Canvas(col_azul, width=240, height=130, bg="#141414")
+grafica_azul = tk.Canvas(col_azul, width=300, height=145, bg="#141414")
 grafica_azul.pack(pady=1)
 barra_azul = tk.Scale(
     col_azul, from_=0, to=100, orient=tk.HORIZONTAL,
@@ -485,7 +522,7 @@ cuadro_img_resultante.pack(pady=1)
 # Sección Espectro
 sub_espectro = tk.Frame(fila_inferior, bg="#252525", padx=10)
 sub_espectro.pack(side=tk.LEFT, expand=True)
-grafica_espectro = tk.Canvas(sub_espectro, width=260, height=135, bg="#141414")
+grafica_espectro = tk.Canvas(sub_espectro, width=300, height=145, bg="#141414")
 grafica_espectro.pack(pady=1)
 
 try:
