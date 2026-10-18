@@ -59,9 +59,9 @@ def obtener_histograma(matriz, filas, columnas):
 
 # ------------------------------------------------------------------------------
 # 3. REDISTRIBUCIÓN DE NIVELES DE INTENSIDAD CON LA BARRA (SCROLLBAR)
-# - Corta los picos según el porcentaje del scrollbar y reparte el exceso en los valles.
-# - Asigna los nuevos valores en orden de brillo para que el histograma se aplane
-#   sin romper la vecindad de píxeles (cero ruido de sal y pimienta).
+# - Recorta los picos que superan el techo y rellena los valles sin que ningún
+#   nivel rebase el tope (aplanado total al 100%).
+# - Ordena por vecindad local y brillo para mantener la imagen suave y sin ruido.
 # ------------------------------------------------------------------------------
 def redistribuir_intensidad(matriz, filas, columnas, porcentaje):
     # Al 0% no se modifica ningún píxel (imagen original intacta)
@@ -75,21 +75,35 @@ def redistribuir_intensidad(matriz, filas, columnas, porcentaje):
     factor = porcentaje / 100.0
     total_pixeles = filas * columnas
 
-    # 1. Agrupamos las coordenadas (f, c) de cada píxel según su nivel original (0 a 255)
+    # 1. Agrupamos las coordenadas (f, c) por su nivel original (0 a 255)
+    # Usamos la suma de los 4 vecinos inmediatos para desempatar píxeles del mismo
+    # tono de forma suave, evitando tanto el ruido como las franjas de color
     grupos = [[] for _ in range(256)]
     for f in range(filas):
+        f_arr = f - 1 if f > 0 else f
+        f_aba = f + 1 if f < filas - 1 else f
+        fila_act = matriz[f]
+        fila_arr = matriz[f_arr]
+        fila_aba = matriz[f_aba]
         for c in range(columnas):
-            grupos[matriz[f][c]].append((f, c))
+            c_izq = c - 1 if c > 0 else c
+            c_der = c + 1 if c < columnas - 1 else c
+            vecinos = fila_arr[c] + fila_aba[c] + fila_act[c_izq] + fila_act[c_der]
+            grupos[fila_act[c]].append((vecinos, f, c))
+
+    for nivel in range(256):
+        if len(grupos[nivel]) > 1:
+            grupos[nivel].sort()
 
     # 2. Histograma original y cuota plana ideal
     hist_original = [len(grupos[i]) for i in range(256)]
     maximo_pico = max(hist_original)
     cuota_ideal = total_pixeles / 256.0
 
-    # 3. Techo de corte: baja progresivamente a medida que subes el scrollbar
+    # 3. Techo de corte según el porcentaje del scrollbar
     techo = maximo_pico - factor * (maximo_pico - cuota_ideal)
 
-    # 4. Recorte de picos y cálculo del exceso
+    # 4. Recorte de picos que superan el techo
     hist_objetivo = [0.0] * 256
     exceso_total = 0.0
 
@@ -100,37 +114,39 @@ def redistribuir_intensidad(matriz, filas, columnas, porcentaje):
         else:
             hist_objetivo[i] = float(hist_original[i])
 
-    # 5. El exceso se redistribuye en los niveles con déficit (valles vacíos)
-    niveles_deficit = [i for i in range(256) if hist_objetivo[i] < techo]
-    if niveles_deficit and exceso_total > 0:
+    # 5. Redistribución del exceso en los niveles con déficit (valles)
+    # Si un nivel con déficit alcanza el techo, se topa en el techo y el resto
+    # del exceso sigue rellenando los niveles más vacíos (aplanado perfecto)
+    while exceso_total > 0.001:
+        niveles_deficit = [i for i in range(256) if hist_objetivo[i] < techo - 0.001]
+        if not niveles_deficit:
+            break
         reparto = exceso_total / len(niveles_deficit)
+        exceso_total = 0.0
         for i in niveles_deficit:
             hist_objetivo[i] += reparto
-    else:
-        reparto = exceso_total / 256.0
-        for i in range(256):
-            hist_objetivo[i] += reparto
+            if hist_objetivo[i] > techo:
+                exceso_total += (hist_objetivo[i] - techo)
+                hist_objetivo[i] = techo
 
-    # 6. Cuotas enteras garantizando que la suma sea exactamente total_pixeles
+    # 6. Cuotas enteras exactas garantizando que la suma sea igual a total_pixeles
     cuotas_enteras = [int(hist_objetivo[i]) for i in range(256)]
     faltante = total_pixeles - sum(cuotas_enteras)
     for i in range(faltante):
         cuotas_enteras[i % 256] += 1
 
-    # 7. Asignación ordenada: aplana las barras del histograma y mantiene la imagen suave
+    # 7. Asignación ordenada a la nueva matriz respetando las cuotas exactas
     nueva_matriz = crear_matriz(filas, columnas)
     nivel_destino = 0
     puesto_en_nivel = 0
 
     for nivel_orig in range(256):
-        for f, c in grupos[nivel_orig]:
+        for _, f, c in grupos[nivel_orig]:
             while nivel_destino < 255 and puesto_en_nivel >= cuotas_enteras[nivel_destino]:
                 nivel_destino += 1
                 puesto_en_nivel = 0
 
-            # Transición suave entre el nivel original y el destino aplanado
-            valor_final = (1.0 - factor) * nivel_orig + factor * nivel_destino
-            nueva_matriz[f][c] = formato_uint8(valor_final)
+            nueva_matriz[f][c] = nivel_destino
             puesto_en_nivel += 1
 
     return nueva_matriz
